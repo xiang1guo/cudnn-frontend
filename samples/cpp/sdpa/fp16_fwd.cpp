@@ -133,8 +133,9 @@ create_sdpa_forward_graph(int64_t const b,
     return graph;
 }
 
-TEST_CASE("Toy sdpa forward", "[graph][sdpa][flash][forward]") {
-    int64_t b          = 3;     // batch size
+using namespace cudnn_frontend::graph;
+void gpu_float_sdpa() {
+     int64_t b          = 3;     // batch size
     int64_t h_q        = 4;     // head dim
     int64_t h_k        = 4;     // head dim
     int64_t h_v        = 4;     // head dim
@@ -144,10 +145,10 @@ TEST_CASE("Toy sdpa forward", "[graph][sdpa][flash][forward]") {
     int64_t d_v        = 128;   // hidden dim
     bool is_inference  = false;
     float attn_scale   = 0.123f;
-    bool causal_mask   = true;
-    bool padding_mask  = (cudnnGetVersion() >= 8903);
-    bool alibi_mask    = (cudnnGetVersion() >= 8904);
-    bool has_attn_bias = (cudnnGetVersion() >= 8903);
+    bool causal_mask   = false;
+    bool padding_mask  = false; // (cudnnGetVersion() >= 8903);
+    bool alibi_mask    = false; // (cudnnGetVersion() >= 8904);
+    bool has_attn_bias = false; // (cudnnGetVersion() >= 8903);
 
     if (cudnnGetVersion() < 8903) {
         SKIP("Test requires cudnn 8.9.3 or above");
@@ -164,6 +165,7 @@ TEST_CASE("Toy sdpa forward", "[graph][sdpa][flash][forward]") {
     auto handle_ptr = create_cudnn_handle();
     auto handle     = *handle_ptr;
 
+    create_sdpa_forward_graph_timer.start();
     auto graph = create_sdpa_forward_graph(b,
                                            h_q,
                                            h_k,
@@ -178,7 +180,7 @@ TEST_CASE("Toy sdpa forward", "[graph][sdpa][flash][forward]") {
                                            alibi_mask,
                                            padding_mask,
                                            has_attn_bias);
-
+    create_sdpa_forward_graph_timer.stop();
     REQUIRE(graph->build(handle, {fe::HeurMode_t::A}).is_good());
 
     //// Build variant pack
@@ -224,8 +226,54 @@ TEST_CASE("Toy sdpa forward", "[graph][sdpa][flash][forward]") {
     int64_t workspace_size;
     REQUIRE(graph->get_workspace_size(workspace_size).is_good());
     Surface<int8_t> workspace(workspace_size, false);
-
+    execution_timer.start();
     REQUIRE(graph->execute(handle, variant_pack, workspace.devPtr).is_good());
-
+    execution_timer.stop();
     CUDA_CHECK(cudaDeviceSynchronize());
+}
+
+TEST_CASE("Toy sdpa forward", "[graph][sdpa][flash][forward]") {
+   std::cout<<"fp16 fwd start"<<std::endl;
+        size_t fixed_run_times = 1000; //1000
+        size_t warmup_run_times = 5; //5
+
+    for (size_t iter = 0; iter < warmup_run_times + fixed_run_times; ++iter) {
+        if (iter == warmup_run_times) {
+            create_sdpa_forward_graph_timer.reset(); 
+            validate_timer.reset();
+            build_operation_graph_timer.reset();
+            create_execution_plans_timer.reset();
+            check_support_timer.reset();
+            build_plans_timer.reset();
+            execution_timer.reset();
+        }
+        gpu_float_sdpa();
+    }
+    std::cout << "perf summary:" << std::endl;
+    double total_time = create_sdpa_forward_graph_timer.avg()
+            + build_operation_graph_timer.avg() + create_execution_plans_timer.avg()
+            + build_plans_timer.avg() + execution_timer.avg();
+    std::cout << "create_sdpa_forward_graph_timer:" << create_sdpa_forward_graph_timer.avg()
+              << " ms, percentage of total time: "
+              << create_sdpa_forward_graph_timer.avg() / total_time << std::endl;
+    // std::cout << "validate_timer:" << validate_timer.avg()
+    //           << " ms, percentage of total time: "
+    //           << validate_timer.avg() / total_time << std::endl;
+    std::cout << "build_operation_graph_timer:" << build_operation_graph_timer.avg()
+              << " ms, percentage of total time: "
+              << build_operation_graph_timer.avg() / total_time << std::endl;
+    std::cout << "create_execution_plans_timer:" << create_execution_plans_timer.avg()
+              << " ms, percentage of total time: "
+              << create_execution_plans_timer.avg() / total_time << std::endl;
+    // std::cout << "check_support_timer:" << check_support_timer.avg()
+    //           << " ms, percentage of total time: "
+    //           << check_support_timer.avg() / total_time << std::endl;
+    std::cout << "build_plans_timer:" << build_plans_timer.avg()
+              << " ms, percentage of total time: "
+              << build_plans_timer.avg() / total_time << std::endl;
+    std::cout << "execution_timer:" << execution_timer.avg()
+              << " ms, percentage of total time: "
+              << execution_timer.avg() / total_time << std::endl;
+
+    std::cout<<"fp16 fwd end"<<std::endl;
 }

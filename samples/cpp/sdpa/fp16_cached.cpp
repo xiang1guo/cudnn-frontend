@@ -100,6 +100,7 @@ cache_lookup_pre_built_graph(std::shared_ptr<fe::graph::Graph>& graph, cudnnHand
 }
 
 TEST_CASE("Cached sdpa", "[graph][sdpa][flash]") {
+    std::cout<<"fp16 cached sdpa start:"<<std::endl;
     int64_t b    = 3;     // batch size
     int64_t h_q  = 4;     // head dim
     int64_t h_k  = 4;     // head dim
@@ -177,4 +178,6 @@ TEST_CASE("Cached sdpa", "[graph][sdpa][flash]") {
     REQUIRE(bwd_graph2->execute(handle, variant_pack, bwd_workspace.devPtr).is_good());
 
     CUDA_CHECK(cudaDeviceSynchronize());
+
+    std::cout<<"fp16 cached end"<<std::endl;
 }

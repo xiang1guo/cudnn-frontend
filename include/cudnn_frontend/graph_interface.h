@@ -1493,16 +1493,54 @@ Graph::build_plans(cudnnHandle_t const &handle, BuildPlanPolicy_t const policy, 
     return {error_code_t::OK, ""};
 }
 
+struct timers_t {
+    void reset() {
+        ms_start_ = 0;
+        sum_ = 0;
+        ticks_ = 0;
+    }
+    void start() { ms_start_ = ms_now(); }
+    void stop() {
+        double cur_time = ms_now() - ms_start_;
+        sum_ += cur_time;
+        ticks_++;
+    }
+    double avg() { return sum_ / ticks_; }
+    double ms_now() {
+        auto timePointTmp
+                = std::chrono::high_resolution_clock::now().time_since_epoch();
+        return std::chrono::duration<double, std::milli>(timePointTmp).count();
+    }
+
+    double ms_start_ = 0;
+    double sum_ = 0;
+    size_t ticks_ = 0;
+};
+
+
+static timers_t create_sdpa_forward_graph_timer, validate_timer, build_operation_graph_timer,
+        create_execution_plans_timer, check_support_timer, build_plans_timer, execution_timer;
+
 inline error_t
 Graph::build(cudnnHandle_t const &handle,
              std::vector<HeurMode_t> const &modes,
              BuildPlanPolicy_t const policy,
              bool const do_multithreaded_builds) {
+    validate_timer.start();
     CHECK_CUDNN_FRONTEND_ERROR(this->validate());
+    validate_timer.stop();
+    build_operation_graph_timer.start();
     CHECK_CUDNN_FRONTEND_ERROR(this->build_operation_graph(handle));
+    build_operation_graph_timer.stop();
+    create_execution_plans_timer.start();
     CHECK_CUDNN_FRONTEND_ERROR(this->create_execution_plans(modes));
+    create_execution_plans_timer.stop();
+    check_support_timer.start();
     CHECK_CUDNN_FRONTEND_ERROR(this->check_support(handle));
+    check_support_timer.stop();
+    build_plans_timer.start();
     CHECK_CUDNN_FRONTEND_ERROR(this->build_plans(handle, policy, do_multithreaded_builds));
+    build_plans_timer.stop();
     return {error_code_t::OK, ""};
 }
 
