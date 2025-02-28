@@ -234,7 +234,7 @@ void gpu_float_sdpa(int64_t b=3, int64_t h_q=4, int64_t h_k=4, int64_t h_v=4, in
 
 TEST_CASE("Toy sdpa forward", "[graph][sdpa][flash][forward]") {
    std::cout<<"fp16 fwd start"<<std::endl;
-        size_t fixed_run_times = 1000; //1000
+        size_t fixed_run_times = 100; //1000
         size_t warmup_run_times = 5; //5
     int b = 3;
     int h_q = 4;
@@ -245,17 +245,22 @@ TEST_CASE("Toy sdpa forward", "[graph][sdpa][flash][forward]") {
     int d_qk = 128;
     int d_v = 128;
 
-    for (size_t iter = 0; iter < warmup_run_times + fixed_run_times; ++iter) {
-        if (iter == warmup_run_times) {
-            create_sdpa_forward_graph_timer.reset(); 
-            validate_timer.reset();
-            build_operation_graph_timer.reset();
-            create_execution_plans_timer.reset();
-            check_support_timer.reset();
-            build_plans_timer.reset();
-            execution_timer.reset();
+    for (size_t iter = 0; iter < warmup_run_times; ++iter) {
+        gpu_float_sdpa(b, h_q, h_k, h_v, s_q, s_kv, d_qk, d_v);
+    }
+    create_sdpa_forward_graph_timer.reset(); 
+    validate_timer.reset();
+    build_operation_graph_timer.reset();
+    create_execution_plans_timer.reset();
+    check_support_timer.reset();
+    build_plans_timer.reset();
+    execution_timer.reset();
+
+    for (size_t iter = 0; iter < fixed_run_times; ++iter) {
+        for(int len=0; len<200; len++) { 
+            s_q += len;
+            gpu_float_sdpa(b, h_q, h_k, h_v, s_q, s_kv, d_qk, d_v);
         }
-        gpu_float_sdpa(b, h_q, h_k, h_v, s_q++, s_kv, d_qk, d_v);
     }
     std::cout << "perf summary:" << std::endl;
     double total_time = create_sdpa_forward_graph_timer.avg()
