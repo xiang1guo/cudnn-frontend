@@ -134,21 +134,21 @@ create_sdpa_forward_graph(int64_t const b,
 }
 
 using namespace cudnn_frontend::graph;
-void gpu_float_sdpa() {
-     int64_t b          = 3;     // batch size
-    int64_t h_q        = 4;     // head dim
-    int64_t h_k        = 4;     // head dim
-    int64_t h_v        = 4;     // head dim
-    int64_t s_q        = 1024;  // q tensor is padded to this seq length
-    int64_t s_kv       = 1024;  // k and v tensor is padded to this seq length
-    int64_t d_qk       = 128;   // hidden dim
-    int64_t d_v        = 128;   // hidden dim
-    bool is_inference  = false;
-    float attn_scale   = 0.123f;
-    bool causal_mask   = false;
-    bool padding_mask  = false; // (cudnnGetVersion() >= 8903);
-    bool alibi_mask    = false; // (cudnnGetVersion() >= 8904);
-    bool has_attn_bias = false; // (cudnnGetVersion() >= 8903);
+void gpu_float_sdpa(int64_t b=3, int64_t h_q=4, int64_t h_k=4, int64_t h_v=4, int64_t s_q=1024, int64_t s_kv=1024, int64_t d_qk=128, int64_t d_v=128, bool is_inference=false, float attn_scale=0.123f, bool causal_mask=false, bool padding_mask=false, bool alibi_mask=false, bool has_attn_bias=false) {
+    // int64_t b          = 3;     // batch size
+    // int64_t h_q        = 4;     // head dim
+    // int64_t h_k        = 4;     // head dim
+    // int64_t h_v        = 4;     // head dim
+    // int64_t s_q        = 1024;  // q tensor is padded to this seq length
+    // int64_t s_kv       = 1024;  // k and v tensor is padded to this seq length
+    // int64_t d_qk       = 128;   // hidden dim
+    // int64_t d_v        = 128;   // hidden dim
+    // bool is_inference  = false;
+    // float attn_scale   = 0.123f;
+    // bool causal_mask   = false;
+    // bool padding_mask  = false; // (cudnnGetVersion() >= 8903);
+    // bool alibi_mask    = false; // (cudnnGetVersion() >= 8904);
+    // bool has_attn_bias = false; // (cudnnGetVersion() >= 8903);
 
     if (cudnnGetVersion() < 8903) {
         SKIP("Test requires cudnn 8.9.3 or above");
@@ -234,20 +234,34 @@ void gpu_float_sdpa() {
 
 TEST_CASE("Toy sdpa forward", "[graph][sdpa][flash][forward]") {
    std::cout<<"fp16 fwd start"<<std::endl;
-        size_t fixed_run_times = 1000; //1000
+        size_t fixed_run_times = 100; //1000
         size_t warmup_run_times = 5; //5
+    int b = 3;
+    int h_q = 4;
+    int h_k = 4;
+    int h_v = 4;
+    int s_q = 1;
+    int s_kv = 100;
+    int d_qk = 128;
+    int d_v = 128;
 
-    for (size_t iter = 0; iter < warmup_run_times + fixed_run_times; ++iter) {
-        if (iter == warmup_run_times) {
-            create_sdpa_forward_graph_timer.reset(); 
-            validate_timer.reset();
-            build_operation_graph_timer.reset();
-            create_execution_plans_timer.reset();
-            check_support_timer.reset();
-            build_plans_timer.reset();
-            execution_timer.reset();
+    for (size_t iter = 0; iter < warmup_run_times; ++iter) {
+        gpu_float_sdpa(b, h_q, h_k, h_v, s_q, s_kv, d_qk, d_v);
+    }
+    create_sdpa_forward_graph_timer.reset(); 
+    validate_timer.reset();
+    build_operation_graph_timer.reset();
+    create_execution_plans_timer.reset();
+    check_support_timer.reset();
+    build_plans_timer.reset();
+    execution_timer.reset();
+
+    for (size_t iter = 0; iter < fixed_run_times; ++iter) {
+        s_kv = 100;
+        for(int len=0; len<200; len++) { 
+            gpu_float_sdpa(b, h_q, h_k, h_v, s_q, s_kv, d_qk, d_v);
+            s_kv += 1;
         }
-        gpu_float_sdpa();
     }
     std::cout << "perf summary:" << std::endl;
     double total_time = create_sdpa_forward_graph_timer.avg()
